@@ -1,0 +1,12 @@
+/target
+Cargo.lock
+.vscode/
+
+/trash
+/build
+
+/raw
+/svd
+/out
+/tmp
+tmp.yaml
