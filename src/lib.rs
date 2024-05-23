@@ -46,7 +46,7 @@ pub fn gen<P: AsRef<Path>>(f: P) -> anyhow::Result<()> {
 
     // split usart_v0 to usart and v0
     let module = ff.split('_').next().unwrap();
-    let version = ff.split('_').nth(1).unwrap();
+    let version = ff.split_once('_').map(|(_, v)| v).unwrap_or("v0");
     println!("Generate Peripheral {} {}", module, version);
 
     transform::expand_extends::ExpandExtends {}
