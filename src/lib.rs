@@ -1,4 +1,8 @@
-use std::{fs::File, io::Write, path::Path};
+use std::{
+    fs::{self, File},
+    io::Write,
+    path::Path,
+};
 
 use anyhow::anyhow;
 use chiptool::{
@@ -6,6 +10,7 @@ use chiptool::{
     ir::IR,
     transform, validate,
 };
+use quote::quote;
 use regex::Regex;
 
 pub fn gen<P: AsRef<Path>>(f: P) -> anyhow::Result<()> {
@@ -45,8 +50,8 @@ pub fn gen<P: AsRef<Path>>(f: P) -> anyhow::Result<()> {
     std::fs::write(format!("./out/{ff}.json"), dump)?;
 
     // split usart_v0 to usart and v0
-    let module = ff.split('_').next().unwrap();
-    let version = ff.split_once('_').map(|(_, v)| v).unwrap_or("v0");
+    let module = ff.rsplit_once('_').unwrap().0;
+    let version = ff.rsplit_once('_').unwrap().1;
     println!("Generate Peripheral {} {}", module, version);
 
     transform::expand_extends::ExpandExtends {}
@@ -62,6 +67,12 @@ pub fn gen<P: AsRef<Path>>(f: P) -> anyhow::Result<()> {
 
     transform::sort::Sort {}.run(&mut ir).unwrap();
     transform::Sanitize {}.run(&mut ir).unwrap();
+
+    fs::write(
+        Path::new("./").join("out").join("common.rs"),
+        chiptool::generate::COMMON_MODULE,
+    )
+    .unwrap();
 
     let mut file = File::create(
         Path::new("./")
@@ -93,6 +104,7 @@ pub fn gen<P: AsRef<Path>>(f: P) -> anyhow::Result<()> {
 
 fn gen_opts() -> generate::Options {
     generate::Options {
-        common_module: CommonModule::Builtin,
+        // common_module: CommonModule::Builtin,
+        common_module: CommonModule::External(quote!(crate::common)),
     }
 }
