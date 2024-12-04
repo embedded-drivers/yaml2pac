@@ -13,8 +13,11 @@ use chiptool::{
 use quote::quote;
 use regex::Regex;
 
-pub fn gen<P: AsRef<Path>>(f: P) -> anyhow::Result<()> {
+pub fn gen<P: AsRef<Path>, Q: AsRef<Path>>(f: P, out: Q, with_common: bool) -> anyhow::Result<()> {
     let f = f.as_ref();
+
+    let out = out.as_ref();
+
     let ff = f
         .file_name()
         .unwrap()
@@ -68,18 +71,16 @@ pub fn gen<P: AsRef<Path>>(f: P) -> anyhow::Result<()> {
     transform::sort::Sort {}.run(&mut ir).unwrap();
     transform::Sanitize {}.run(&mut ir).unwrap();
 
-    fs::write(
-        Path::new("./").join("out").join("common.rs"),
-        chiptool::generate::COMMON_MODULE,
-    )
-    .unwrap();
+    let out_file_path = if out.is_dir() {
+        out.join(format!("{}_{}.rs", module, version))
+            .with_extension("rs")
+    } else {
+        out.to_path_buf()
+    };
 
-    let mut file = File::create(
-        Path::new("./")
-            .join("out")
-            .join(format!("{}_{}.rs", module, version)),
-    )
-    .unwrap();
+    println!("Writing PAC to {}", out_file_path.display());
+
+    let mut file = File::create(out_file_path)?;
 
     // Allow a few warning
     file.write_all(
@@ -98,6 +99,12 @@ pub fn gen<P: AsRef<Path>>(f: P) -> anyhow::Result<()> {
     let re = Regex::new("# *! *\\[.*\\]").unwrap();
     let data = re.replace_all(&data, "");
     file.write_all(data.as_bytes()).unwrap();
+
+    if with_common {
+        let common_path = out.parent().unwrap().join("common.rs");
+        fs::write(&common_path, chiptool::generate::COMMON_MODULE)?;
+        println!("Write common.rs to {}", common_path.display());
+    }
 
     Ok(())
 }

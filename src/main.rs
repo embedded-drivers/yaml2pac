@@ -1,15 +1,26 @@
+use clap::Parser;
+
+#[derive(clap::Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// Input file, yaml
+    #[arg(short, long)]
+    input: String,
+
+    /// Output file, rs
+    #[arg(short, long)]
+    output: Option<String>,
+
+    /// With common.rs
+    #[arg(long)]
+    common: bool,
+}
+
 pub fn main() -> anyhow::Result<()> {
-    let args: Vec<String> = std::env::args().collect();
+    let args = Args::parse();
 
-    if args.len() != 2 {
-        eprintln!("Usage: {} <yaml-file>", args[0]);
-        std::process::exit(1);
-    }
+    let out = args.output.unwrap_or("./out/".to_string());
 
-    std::fs::create_dir_all("./out")?;
-
-    let f = &args[1];
-
-    yaml2pac::gen(f)?;
+    yaml2pac::gen(args.input, out, args.common)?;
     Ok(())
 }
