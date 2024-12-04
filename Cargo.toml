@@ -2,6 +2,15 @@
 name = "yaml2pac"
 version = "0.1.0"
 edition = "2021"
+authors = ["Andelf <andelf@gmail.com>"]
+repository = "https://github.com/embedded-drivers/yaml2pac"
+documentation = "https://docs.rs/yaml2pac"
+homepage = "https://github.com/embedded-drivers/yaml2pac"
+categories = ["development-tools", "embedded"]
+description = "Generate PAC from YAML"
+keywords = ["pac", "yaml", "svd"]
+readme = "README.md"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 anyhow = "1.0.94"
