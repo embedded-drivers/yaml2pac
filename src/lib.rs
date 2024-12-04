@@ -49,8 +49,8 @@ pub fn gen<P: AsRef<Path>, Q: AsRef<Path>>(f: P, out: Q, with_common: bool) -> a
         return Err(anyhow!(format!("\n{ff}:\n{err_string}")));
     }
 
-    let dump = serde_json::to_string_pretty(&ir)?;
-    std::fs::write(format!("./out/{ff}.json"), dump)?;
+    //let dump = serde_json::to_string_pretty(&ir)?;
+    //std::fs::write(format!("./out/{ff}.json"), dump)?;
 
     // split usart_v0 to usart and v0
     let module = ff.rsplit_once('_').unwrap().0;
