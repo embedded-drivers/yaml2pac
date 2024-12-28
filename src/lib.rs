@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::anyhow;
+use chiptool::util::ToSanitizedPascalCase;
 use chiptool::{
     generate::{self, CommonModule},
     ir::IR,
@@ -13,22 +14,14 @@ use chiptool::{
 use quote::quote;
 use regex::Regex;
 
-pub fn gen<P: AsRef<Path>, Q: AsRef<Path>>(f: P, out: Q, with_common: bool) -> anyhow::Result<()> {
+pub fn read_ir<P: AsRef<Path>>(f: P) -> anyhow::Result<IR> {
     let f = f.as_ref();
-
-    let out = out.as_ref();
-
-    let ff = f
-        .file_name()
-        .unwrap()
-        .to_string_lossy()
-        .strip_suffix(".yaml")
-        .unwrap()
-        .to_string();
-
-    let mut ir: IR = serde_yaml::from_str(&std::fs::read_to_string(&f)?)
+    let ir: IR = serde_yaml::from_str(&fs::read_to_string(&f)?)
         .map_err(|e| anyhow!("failed to parse {f:?}: {e:?}"))?;
+    Ok(ir)
+}
 
+pub fn gen_pac<P: AsRef<Path>>(mut ir: IR, out: P, builtin_common: bool) -> anyhow::Result<()> {
     // validate yaml file
     // we allow register overlap and field overlap for now
     let validate_option = validate::Options {
@@ -46,16 +39,13 @@ pub fn gen<P: AsRef<Path>, Q: AsRef<Path>>(f: P, out: Q, with_common: bool) -> a
     });
 
     if !err_string.is_empty() {
-        return Err(anyhow!(format!("\n{ff}:\n{err_string}")));
+        return Err(anyhow!(format!("{err_string}")));
     }
 
     //let dump = serde_json::to_string_pretty(&ir)?;
     //std::fs::write(format!("./out/{ff}.json"), dump)?;
 
     // split usart_v0 to usart and v0
-    let module = ff.rsplit_once('_').unwrap().0;
-    let version = ff.rsplit_once('_').unwrap().1;
-    println!("Generate Peripheral {} {}", module, version);
 
     transform::expand_extends::ExpandExtends {}
         .run(&mut ir)
@@ -71,12 +61,13 @@ pub fn gen<P: AsRef<Path>, Q: AsRef<Path>>(f: P, out: Q, with_common: bool) -> a
     transform::sort::Sort {}.run(&mut ir).unwrap();
     transform::Sanitize {}.run(&mut ir).unwrap();
 
-    let out_file_path = if out.is_dir() {
-        out.join(format!("{}_{}.rs", module, version))
-            .with_extension("rs")
-    } else {
-        out.to_path_buf()
-    };
+    // Rename enum variants to PascalCase
+    transform::map_names(&mut ir, |k, s| match k {
+        transform::NameKind::EnumVariant => *s = s.to_sanitized_pascal_case().to_string(),
+        _ => {}
+    });
+
+    let out_file_path = out.as_ref();
 
     println!("Writing PAC to {}", out_file_path.display());
 
@@ -91,7 +82,7 @@ pub fn gen<P: AsRef<Path>, Q: AsRef<Path>>(f: P, out: Q, with_common: bool) -> a
     )
     .unwrap();
 
-    let items = generate::render(&ir, &gen_opts()).unwrap();
+    let items = generate::render(&ir, &gen_opts(builtin_common)).unwrap();
 
     let data = items.to_string().replace("] ", "]\n");
 
@@ -100,18 +91,17 @@ pub fn gen<P: AsRef<Path>, Q: AsRef<Path>>(f: P, out: Q, with_common: bool) -> a
     let data = re.replace_all(&data, "");
     file.write_all(data.as_bytes()).unwrap();
 
-    if with_common {
-        let common_path = out.parent().unwrap().join("common.rs");
-        fs::write(&common_path, chiptool::generate::COMMON_MODULE)?;
-        println!("Write common.rs to {}", common_path.display());
-    }
-
     Ok(())
 }
 
-fn gen_opts() -> generate::Options {
-    generate::Options {
-        // common_module: CommonModule::Builtin,
-        common_module: CommonModule::External(quote!(crate::common)),
+fn gen_opts(builtin_common: bool) -> generate::Options {
+    if builtin_common {
+        generate::Options {
+            common_module: CommonModule::Builtin,
+        }
+    } else {
+        generate::Options {
+            common_module: CommonModule::External(quote!(crate::common)),
+        }
     }
 }
