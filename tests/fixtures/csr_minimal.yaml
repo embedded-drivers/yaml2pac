@@ -1,0 +1,71 @@
+# Minimal CSR test fixture: a few RISC-V CSRs with mixed access
+block/CSR:
+  description: Test CSRs.
+  items:
+    - name: mstatus
+      byte_offset: 0x300
+      description: Machine status register.
+      fieldset: MSTATUS
+    - name: mie
+      byte_offset: 0x304
+      description: Machine interrupt enable.
+      fieldset: MIE
+    - name: mcause
+      byte_offset: 0x342
+      description: Machine trap cause.
+      fieldset: MCAUSE
+      access: Read
+fieldset/MSTATUS:
+  description: Machine Status Register.
+  fields:
+    - name: MIE
+      description: Machine interrupt enable.
+      bit_offset: 3
+      bit_size: 1
+    - name: MPIE
+      description: Machine previous interrupt enable.
+      bit_offset: 7
+      bit_size: 1
+    - name: MPP
+      description: Machine previous privilege mode.
+      bit_offset: 11
+      bit_size: 2
+      enum: PRIV_MODE
+fieldset/MIE:
+  description: Machine Interrupt Enable Register.
+  fields:
+    - name: MSIE
+      description: Machine software interrupt enable.
+      bit_offset: 3
+      bit_size: 1
+    - name: MTIE
+      description: Machine timer interrupt enable.
+      bit_offset: 7
+      bit_size: 1
+    - name: MEIE
+      description: Machine external interrupt enable.
+      bit_offset: 11
+      bit_size: 1
+fieldset/MCAUSE:
+  description: Machine Cause Register.
+  fields:
+    - name: CODE
+      description: Exception code.
+      bit_offset: 0
+      bit_size: 31
+    - name: INTERRUPT
+      description: Interrupt flag.
+      bit_offset: 31
+      bit_size: 1
+enum/PRIV_MODE:
+  bit_size: 2
+  variants:
+    - name: USER
+      description: User mode.
+      value: 0
+    - name: SUPERVISOR
+      description: Supervisor mode.
+      value: 1
+    - name: MACHINE
+      description: Machine mode.
+      value: 3

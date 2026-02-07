@@ -1,0 +1,63 @@
+# Minimal PAC test fixture: a simple timer peripheral
+block/TIMER:
+  description: Basic Timer peripheral.
+  items:
+    - name: CR
+      description: Control Register.
+      byte_offset: 0
+      fieldset: CR
+    - name: SR
+      description: Status Register.
+      byte_offset: 4
+      fieldset: SR
+      access: Read
+    - name: CNT
+      description: Counter value.
+      byte_offset: 8
+      bit_size: 32
+    - name: CMP
+      description: Compare value registers.
+      byte_offset: 16
+      bit_size: 32
+      array:
+        len: 4
+        stride: 4
+fieldset/CR:
+  description: Timer Control Register.
+  fields:
+    - name: EN
+      description: Timer enable.
+      bit_offset: 0
+      bit_size: 1
+    - name: MODE
+      description: Timer mode.
+      bit_offset: 1
+      bit_size: 2
+      enum: MODE
+    - name: PRESCALER
+      description: Clock prescaler.
+      bit_offset: 8
+      bit_size: 8
+fieldset/SR:
+  description: Timer Status Register.
+  fields:
+    - name: OVF
+      description: Overflow flag.
+      bit_offset: 0
+      bit_size: 1
+    - name: CMP_MATCH
+      description: Compare match flag.
+      bit_offset: 1
+      bit_size: 1
+enum/MODE:
+  bit_size: 2
+  variants:
+    - name: ONE_SHOT
+      description: One-shot mode.
+      value: 0
+    - name: CONTINUOUS
+      description: Continuous mode.
+      value: 1
+    - name: PWM
+      description: PWM output mode.
+      value: 2
