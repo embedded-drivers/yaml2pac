@@ -28,13 +28,23 @@ pub trait Write: Access {}
 impl Write for RW {}
 impl Write for W {}
 
+/// Sealed trait for CSR read access. All CSRs implement this.
 pub(crate) trait SealedCSR {
     unsafe fn read_csr() -> usize;
+}
+
+/// Sealed trait for CSR write/set/clear access. Only writable CSRs implement this.
+pub(crate) trait SealedCSRWrite: SealedCSR {
     unsafe fn write_csr(value: usize);
     unsafe fn set_csr(mask: usize);
     unsafe fn clear_csr(mask: usize);
 }
+
+/// Marker trait for all CSRs (read capability).
 pub trait CSR: SealedCSR {}
+
+/// Marker trait for writable CSRs (write + atomic set/clear capability).
+pub trait CSRWrite: CSR + SealedCSRWrite {}
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Reg<T: Copy, C: CSR, A: Access> {
@@ -65,7 +75,7 @@ impl<T: Copy, C: CSR, A: Read> Reg<T, C, A> {
     }
 }
 
-impl<T: Copy, C: CSR, A: Write> Reg<T, C, A> {
+impl<T: Copy, C: CSRWrite, A: Write> Reg<T, C, A> {
     #[inline(always)]
     pub unsafe fn write_value(&self, val: T) {
         let mut new_val: usize = 0;
@@ -76,7 +86,7 @@ impl<T: Copy, C: CSR, A: Write> Reg<T, C, A> {
     }
 }
 
-impl<T: Default + Copy, C: CSR, A: Write> Reg<T, C, A> {
+impl<T: Default + Copy, C: CSRWrite, A: Write> Reg<T, C, A> {
     #[inline(always)]
     pub unsafe fn write<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
         let mut val = Default::default();
@@ -86,7 +96,7 @@ impl<T: Default + Copy, C: CSR, A: Write> Reg<T, C, A> {
     }
 }
 
-impl<T: Copy, C: CSR, A: Read + Write> Reg<T, C, A> {
+impl<T: Copy, C: CSRWrite, A: Read + Write> Reg<T, C, A> {
     #[inline(always)]
     pub unsafe fn modify<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
         let mut val = self.read();
@@ -96,7 +106,7 @@ impl<T: Copy, C: CSR, A: Read + Write> Reg<T, C, A> {
     }
 }
 
-impl<T: Default + Copy, C: CSR, A: Read + Write> Reg<T, C, A> {
+impl<T: Default + Copy, C: CSRWrite, A: Read + Write> Reg<T, C, A> {
     /// Atomically set bits using a single `csrrs` instruction.
     ///
     /// The closure receives a zeroed value; bits set to 1 in the result will be

@@ -49,60 +49,51 @@ pub fn render(opts: &super::Options, ir: &IR, b: &Block, path: &str) -> Result<T
 
                 let csr_addr = i.byte_offset;
                 let rasm = format!("csrrs {{0}}, 0x{:03x}, x0", csr_addr);
-                let wasm = format!("csrrw x0, 0x{:03x}, {{0}}", csr_addr);
-                let sasm = format!("csrrs x0, 0x{:03x}, {{0}}", csr_addr);
-                let casm = format!("csrrc x0, 0x{:03x}, {{0}}", csr_addr);
 
                 let csr_trait = quote!(#common_path::CSR);
                 let sealed_csr_trait = quote!(#common_path::SealedCSR);
 
-                // Generate set/clear implementations based on access mode.
-                // Read-only CSRs still need implementations (trait requirement),
-                // but the Reg trait bounds prevent user code from calling them.
-                let write_impl = match r.access {
-                    Access::Read => quote! {
-                        #[inline]
-                        unsafe fn write_csr(_value: usize) {
-                            unimplemented!("write to read-only CSR")
-                        }
-                    },
-                    _ => quote! {
-                        #[inline]
-                        unsafe fn write_csr(value: usize) {
-                            core::arch::asm!(#wasm, in(reg) value);
-                        }
-                    },
-                };
+                let is_writable = r.access != Access::Read;
 
-                let set_impl = match r.access {
-                    Access::Read => quote! {
+                // All CSRs get SealedCSR (read) + CSR
+                let mut csr_impls = quote!(
+                    impl #sealed_csr_trait for #csr_ty {
                         #[inline]
-                        unsafe fn set_csr(_mask: usize) {
-                            unimplemented!("set on read-only CSR")
+                        unsafe fn read_csr() -> usize {
+                            let r: usize;
+                            core::arch::asm!(#rasm, out(reg) r);
+                            r
                         }
-                    },
-                    _ => quote! {
-                        #[inline]
-                        unsafe fn set_csr(mask: usize) {
-                            core::arch::asm!(#sasm, in(reg) mask);
-                        }
-                    },
-                };
+                    }
+                    impl #csr_trait for #csr_ty {}
+                );
 
-                let clear_impl = match r.access {
-                    Access::Read => quote! {
-                        #[inline]
-                        unsafe fn clear_csr(_mask: usize) {
-                            unimplemented!("clear on read-only CSR")
+                // Writable CSRs additionally get SealedCSRWrite + CSRWrite
+                if is_writable {
+                    let wasm = format!("csrrw x0, 0x{:03x}, {{0}}", csr_addr);
+                    let sasm = format!("csrrs x0, 0x{:03x}, {{0}}", csr_addr);
+                    let casm = format!("csrrc x0, 0x{:03x}, {{0}}", csr_addr);
+                    let sealed_write_trait = quote!(#common_path::SealedCSRWrite);
+                    let write_trait = quote!(#common_path::CSRWrite);
+
+                    csr_impls.extend(quote!(
+                        impl #sealed_write_trait for #csr_ty {
+                            #[inline]
+                            unsafe fn write_csr(value: usize) {
+                                core::arch::asm!(#wasm, in(reg) value);
+                            }
+                            #[inline]
+                            unsafe fn set_csr(mask: usize) {
+                                core::arch::asm!(#sasm, in(reg) mask);
+                            }
+                            #[inline]
+                            unsafe fn clear_csr(mask: usize) {
+                                core::arch::asm!(#casm, in(reg) mask);
+                            }
                         }
-                    },
-                    _ => quote! {
-                        #[inline]
-                        unsafe fn clear_csr(mask: usize) {
-                            core::arch::asm!(#casm, in(reg) mask);
-                        }
-                    },
-                };
+                        impl #write_trait for #csr_ty {}
+                    ));
+                }
 
                 items.extend(quote!(
                     #doc
@@ -115,18 +106,7 @@ pub fn render(opts: &super::Options, ir: &IR, b: &Block, path: &str) -> Result<T
                     #[doc(hidden)]
                     pub struct #csr_ty;
 
-                    impl #sealed_csr_trait for #csr_ty {
-                        #[inline]
-                        unsafe fn read_csr() -> usize {
-                            let r: usize;
-                            core::arch::asm!(#rasm, out(reg) r);
-                            r
-                        }
-                        #write_impl
-                        #set_impl
-                        #clear_impl
-                    }
-                    impl #csr_trait for #csr_ty {}
+                    #csr_impls
                 ));
             }
             BlockItemInner::Block(_) => {

@@ -83,10 +83,23 @@ fn rvcsr_contains_inline_asm() {
 }
 
 #[test]
-fn rvcsr_readonly_uses_unimplemented() {
+fn rvcsr_readonly_no_write_trait() {
     let code = gen_to_string("csr_minimal.yaml", Mode::RvCsr, true);
-    // mcause is read-only, should have unimplemented for write/set/clear
-    assert!(code.contains("unimplemented"), "read-only CSR should have unimplemented");
+    // mcause is read-only: should impl SealedCSR + CSR but NOT SealedCSRWrite + CSRWrite
+    assert!(code.contains("CSR_MCAUSE"), "should have CSR_MCAUSE marker");
+    assert!(code.contains("SealedCSR for CSR_MCAUSE"), "read-only CSR should impl SealedCSR");
+    assert!(!code.contains("SealedCSRWrite for CSR_MCAUSE"),
+        "read-only CSR should NOT impl SealedCSRWrite");
+    assert!(!code.contains("CSRWrite for CSR_MCAUSE"),
+        "read-only CSR should NOT impl CSRWrite");
+    // RW CSRs should still have write traits
+    assert!(code.contains("SealedCSRWrite for CSR_MSTATUS"),
+        "RW CSR should impl SealedCSRWrite");
+    assert!(code.contains("CSRWrite for CSR_MSTATUS"),
+        "RW CSR should impl CSRWrite");
+    // No unimplemented!() anywhere
+    assert!(!code.contains("unimplemented"),
+        "should have zero unimplemented!() calls");
 }
 
 #[test]
