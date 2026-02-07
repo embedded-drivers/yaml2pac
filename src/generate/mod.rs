@@ -87,6 +87,7 @@ pub fn render_rvcsr(ir: &IR, opts: &Options) -> Result<TokenStream> {
     let mut root = Module::new();
     root.items = TokenStream::new();
 
+    // Blocks → per-CSR modules (fieldsets rendered inside each module)
     for (p, b) in sorted_map(&ir.blocks, |name, _| name.clone()) {
         let (mods, _) = split_path(p);
         root.get_by_path(&mods)
@@ -94,25 +95,13 @@ pub fn render_rvcsr(ir: &IR, opts: &Options) -> Result<TokenStream> {
             .extend(rvcsr::render(opts, ir, b, p)?);
     }
 
-    for (p, fs) in sorted_map(&ir.fieldsets, |name, _| name.clone()) {
-        let (mods, _) = split_path(p);
-        root.get_by_path(&mods)
-            .items
-            .extend(fieldset::render(opts, ir, fs, p)?);
-    }
-
+    // Enums at top level (CSR modules import via `use super::*`)
     for (p, e) in sorted_map(&ir.enums, |name, _| name.clone()) {
         let (mods, _) = split_path(p);
         root.get_by_path(&mods)
             .items
             .extend(enumm::render(opts, ir, e, p)?);
     }
-
-    // Embed common_csr.rs as the `common` module
-    let tokens = TokenStream::from_str(std::str::from_utf8(COMMON_CSR_MODULE).unwrap()).unwrap();
-    let module = root.get_by_path(&["common"]);
-    module.items = TokenStream::new();
-    module.items.extend(tokens);
 
     root.render()
 }

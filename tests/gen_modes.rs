@@ -65,11 +65,11 @@ fn rvcsr_generates_output() {
 }
 
 #[test]
-fn rvcsr_contains_csr_marker_types() {
+fn rvcsr_generates_csr_modules() {
     let code = gen_to_string("csr_minimal.yaml", Mode::RvCsr, true);
-    assert!(code.contains("CSR_MSTATUS"), "should generate CSR_MSTATUS marker type");
-    assert!(code.contains("CSR_MIE"), "should generate CSR_MIE marker type");
-    assert!(code.contains("CSR_MCAUSE"), "should generate CSR_MCAUSE marker type");
+    assert!(code.contains("pub mod mstatus"), "should generate mstatus module");
+    assert!(code.contains("pub mod mie"), "should generate mie module");
+    assert!(code.contains("pub mod mcause"), "should generate mcause module");
 }
 
 #[test]
@@ -83,38 +83,69 @@ fn rvcsr_contains_inline_asm() {
 }
 
 #[test]
-fn rvcsr_readonly_no_write_trait() {
+fn rvcsr_contains_read_write_functions() {
     let code = gen_to_string("csr_minimal.yaml", Mode::RvCsr, true);
-    // mcause is read-only: should impl SealedCSR + CSR but NOT SealedCSRWrite + CSRWrite
-    assert!(code.contains("CSR_MCAUSE"), "should have CSR_MCAUSE marker");
-    assert!(code.contains("SealedCSR for CSR_MCAUSE"), "read-only CSR should impl SealedCSR");
-    assert!(!code.contains("SealedCSRWrite for CSR_MCAUSE"),
-        "read-only CSR should NOT impl SealedCSRWrite");
-    assert!(!code.contains("CSRWrite for CSR_MCAUSE"),
-        "read-only CSR should NOT impl CSRWrite");
-    // RW CSRs should still have write traits
-    assert!(code.contains("SealedCSRWrite for CSR_MSTATUS"),
-        "RW CSR should impl SealedCSRWrite");
-    assert!(code.contains("CSRWrite for CSR_MSTATUS"),
-        "RW CSR should impl CSRWrite");
-    // No unimplemented!() anywhere
-    assert!(!code.contains("unimplemented"),
-        "should have zero unimplemented!() calls");
+    assert!(code.contains("pub fn read"), "should have read() function");
+    assert!(code.contains("pub unsafe fn write"), "should have write() function");
+    assert!(code.contains("pub unsafe fn modify"), "should have modify() function");
 }
 
 #[test]
-fn rvcsr_contains_fieldset_accessors() {
+fn rvcsr_readonly_no_write() {
     let code = gen_to_string("csr_minimal.yaml", Mode::RvCsr, true);
-    assert!(code.contains("mie") || code.contains("set_mie"),
-        "should contain MIE field accessor in MSTATUS fieldset");
+    // mcause is read-only: find its module and verify no write/set/clear inside
+    // Split at module boundaries to isolate mcause module content
+    let mcause_start = code.find("pub mod mcause").expect("mcause module should exist");
+    // Find the next top-level module after mcause (or end of string)
+    let rest = &code[mcause_start..];
+    let mcause_end = rest[1..].find("pub mod ").map(|i| i + 1).unwrap_or(rest.len());
+    let mcause_code = &rest[..mcause_end];
+
+    assert!(mcause_code.contains("pub fn read"), "read-only CSR should have read()");
+    assert!(!mcause_code.contains("pub unsafe fn write"),
+        "read-only CSR should NOT have write()");
+    assert!(!mcause_code.contains("pub unsafe fn modify"),
+        "read-only CSR should NOT have modify()");
+    assert!(!mcause_code.contains("fn _write"),
+        "read-only CSR should NOT have _write asm");
+    assert!(!mcause_code.contains("fn _set"),
+        "read-only CSR should NOT have _set asm");
+    assert!(!mcause_code.contains("fn _clear"),
+        "read-only CSR should NOT have _clear asm");
 }
 
 #[test]
-fn rvcsr_contains_common_module() {
+fn rvcsr_contains_fieldset_in_module() {
     let code = gen_to_string("csr_minimal.yaml", Mode::RvCsr, true);
-    assert!(code.contains("SealedCSR"), "builtin common should contain SealedCSR trait");
-    assert!(code.contains("atomic_set") || code.contains("atomic_clear"),
-        "builtin common should contain atomic operations");
+    // Fieldset struct should be inside the CSR module (PascalCase after Sanitize transform)
+    assert!(code.contains("pub struct Mstatus"), "should contain Mstatus fieldset struct");
+    assert!(code.contains("pub struct Mie"), "should contain Mie fieldset struct");
+    assert!(code.contains("pub struct Mcause"), "should contain Mcause fieldset struct");
+}
+
+#[test]
+fn rvcsr_contains_per_field_set_clear() {
+    let code = gen_to_string("csr_minimal.yaml", Mode::RvCsr, true);
+    // mstatus has single-bit MIE field → should have set_mie() / clear_mie()
+    assert!(code.contains("fn set_mie"), "should have set_mie() for single-bit field");
+    assert!(code.contains("fn clear_mie"), "should have clear_mie() for single-bit field");
+    assert!(code.contains("fn set_mpie"), "should have set_mpie() for single-bit field");
+    assert!(code.contains("fn clear_mpie"), "should have clear_mpie() for single-bit field");
+}
+
+#[test]
+fn rvcsr_multibit_field_set() {
+    let code = gen_to_string("csr_minimal.yaml", Mode::RvCsr, true);
+    // mstatus has multi-bit MPP field (2 bits, enum) → should have set_mpp(val)
+    assert!(code.contains("fn set_mpp"), "should have set_mpp() for multi-bit enum field");
+}
+
+#[test]
+fn rvcsr_no_common_module() {
+    let code = gen_to_string("csr_minimal.yaml", Mode::RvCsr, true);
+    // No common module needed in module-per-CSR style
+    assert!(!code.contains("pub mod common"), "should NOT have common module");
+    assert!(!code.contains("SealedCSR"), "should NOT have SealedCSR trait");
 }
 
 #[test]
@@ -184,22 +215,6 @@ fn i2cdev_contains_enum() {
 }
 
 // --- Common path configuration tests ---
-
-#[test]
-fn custom_common_path_rvcsr() {
-    let ir = yaml2pac::read_ir(fixture("csr_minimal.yaml")).unwrap();
-    let tmp = TempDir::new().unwrap();
-    let out = tmp.path().join("out.rs");
-    let opts = GenOptions {
-        mode: Mode::RvCsr,
-        builtin_common: true,
-        common_module_path: Some("crate::register::common".to_string()),
-    };
-    yaml2pac::gen_pac(ir, &out, &opts).unwrap();
-    let code = std::fs::read_to_string(&out).unwrap();
-    assert!(code.contains("crate :: register :: common"),
-        "should use custom common path");
-}
 
 #[test]
 fn custom_common_path_i2cdev() {
