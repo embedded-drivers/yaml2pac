@@ -62,8 +62,6 @@ fn render_csr_module(
     // Render fieldset struct inside this module
     if let Some(fs_path) = &reg.fieldset {
         let fs = ir.fieldsets.get(fs_path).unwrap();
-        // Import enums (vals::*) from parent scope
-        items.extend(quote!(use super::*;));
         items.extend(fieldset::render(opts, ir, fs, fs_path)?);
     }
 
@@ -75,7 +73,7 @@ fn render_csr_module(
             #[inline(always)]
             unsafe fn _read() -> usize {
                 let r: usize;
-                core::arch::asm!(#rasm, out(reg) r);
+                unsafe { core::arch::asm!(#rasm, out(reg) r); }
                 r
             }
         });
@@ -88,15 +86,15 @@ fn render_csr_module(
         items.extend(quote! {
             #[inline(always)]
             unsafe fn _write(bits: usize) {
-                core::arch::asm!(#wasm, in(reg) bits);
+                unsafe { core::arch::asm!(#wasm, in(reg) bits); }
             }
             #[inline(always)]
             unsafe fn _set(bits: usize) {
-                core::arch::asm!(#sasm, in(reg) bits);
+                unsafe { core::arch::asm!(#sasm, in(reg) bits); }
             }
             #[inline(always)]
             unsafe fn _clear(bits: usize) {
-                core::arch::asm!(#casm, in(reg) bits);
+                unsafe { core::arch::asm!(#casm, in(reg) bits); }
             }
         });
     }
@@ -131,7 +129,7 @@ fn render_csr_module(
                 /// Write the CSR value.
                 #[inline]
                 pub unsafe fn write(val: #fs_ty) {
-                    _write(val.0 as usize);
+                    unsafe { _write(val.0 as usize); }
                 }
             });
         }
@@ -143,7 +141,7 @@ fn render_csr_module(
                 pub unsafe fn modify<R>(f: impl FnOnce(&mut #fs_ty) -> R) -> R {
                     let mut val = read();
                     let res = f(&mut val);
-                    write(val);
+                    unsafe { write(val); }
                     res
                 }
             });
@@ -170,7 +168,7 @@ fn render_csr_module(
                 /// Write the CSR value as raw usize.
                 #[inline]
                 pub unsafe fn write(val: usize) {
-                    _write(val);
+                    unsafe { _write(val); }
                 }
             });
         }
@@ -178,6 +176,7 @@ fn render_csr_module(
 
     Ok(items)
 }
+
 
 /// Generate per-field `set_<field>()` / `clear_<field>()` functions.
 ///
@@ -215,12 +214,12 @@ fn render_field_ops(
                 #doc
                 #[inline]
                 pub unsafe fn #set_fn() {
-                    _set(#mask);
+                    unsafe { _set(#mask); }
                 }
                 #doc
                 #[inline]
                 pub unsafe fn #clear_fn() {
-                    _clear(#mask);
+                    unsafe { _clear(#mask); }
                 }
             });
         } else {
@@ -237,10 +236,10 @@ fn render_field_ops(
                     #doc
                     #[inline]
                     pub unsafe fn #set_fn(val: #enum_ty) {
-                        let mut bits = _read();
+                        let mut bits = unsafe { _read() };
                         bits &= !(#mask << #bit_off);
                         bits |= (val.to_bits() as usize & #mask) << #bit_off;
-                        _write(bits);
+                        unsafe { _write(bits); }
                     }
                 });
             } else {
@@ -256,10 +255,10 @@ fn render_field_ops(
                     #doc
                     #[inline]
                     pub unsafe fn #set_fn(val: #field_ty) {
-                        let mut bits = _read();
+                        let mut bits = unsafe { _read() };
                         bits &= !(#mask << #bit_off);
                         bits |= (val as usize & #mask) << #bit_off;
-                        _write(bits);
+                        unsafe { _write(bits); }
                     }
                 });
             }

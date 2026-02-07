@@ -129,6 +129,7 @@ pub fn render(opts: &super::Options, _ir: &IR, e: &Enum, path: &str) -> Result<T
         out.extend(quote! {
             #doc
             #[repr(#ty)]
+            #[allow(non_camel_case_types)]
             #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
             #derive_defmt
             pub enum #name {

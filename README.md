@@ -33,7 +33,7 @@ cargo install --path .
 yaml2pac --mode pac -i registers.yaml -o pac.rs --builtin-common
 
 # RISC-V CSR mode - inline asm for CSR access
-yaml2pac --mode rvcsr -i csr.yaml -o register.rs --builtin-common
+yaml2pac --mode rvcsr -i csr.yaml -o register.rs
 
 # I2C device mode - typed register addresses
 yaml2pac --mode i2cdev -i sensor.yaml -o regs.rs --builtin-common
@@ -46,8 +46,8 @@ yaml2pac --mode i2cdev -i sensor.yaml -o regs.rs --builtin-common
 | `-i, --input <FILE>...` | Input YAML file(s). Multiple files are merged. |
 | `-o, --output <FILE>` | Output `.rs` file (default: `./out/out.rs`) |
 | `--mode <MODE>` | Generation mode: `pac`, `rvcsr`, `i2cdev` (default: `pac`) |
-| `--builtin-common` | Embed the common module into the generated output |
-| `--common-module-path <PATH>` | Rust path to common module (default: `self::common` with `--builtin-common`, `crate::common` otherwise) |
+| `--builtin-common` | Embed the common module into generated output (applies to `pac`, `i2cdev`) |
+| `--common-module-path <PATH>` | Rust path to common module (applies to `pac`, `i2cdev`; default: `self::common` with `--builtin-common`, `crate::common` otherwise) |
 
 ### Common module path
 
@@ -55,16 +55,34 @@ The `--common-module-path` option controls where generated code looks for the co
 
 ```shell
 # Embedded as submodule (default with --builtin-common)
-yaml2pac --mode rvcsr -i csr.yaml -o register.rs --builtin-common
+yaml2pac --mode pac -i registers.yaml -o pac.rs --builtin-common
 # Generated code uses: self::common::Reg
 
 # External module at crate root (default without --builtin-common)
-yaml2pac --mode rvcsr -i csr.yaml -o register.rs
+yaml2pac --mode pac -i registers.yaml -o pac.rs
 # Generated code uses: crate::common::Reg
 
 # Custom path
-yaml2pac --mode rvcsr -i csr.yaml -o register.rs --builtin-common --common-module-path "crate::register::common"
+yaml2pac --mode i2cdev -i sensor.yaml -o regs.rs --builtin-common --common-module-path "crate::register::common"
 # Generated code uses: crate::register::common::Reg
+```
+
+`rvcsr` mode does not use `Reg/common` and ignores common module path options.
+
+## RVCSR output style
+
+`rvcsr` generates module-per-CSR APIs (riscv crate style), for example:
+
+```rust
+// typed read
+let m = register::mcache_ctl::read();
+
+// single-bit atomic ops (single csrrs/csrrc instruction)
+unsafe { register::mcache_ctl::set_dc_en(); }
+unsafe { register::mcache_ctl::clear_dc_en(); }
+
+// multi-bit field update (RMW)
+unsafe { register::mcache_ctl::set_dc_warnd(0b11); }
 ```
 
 ## YAML format
